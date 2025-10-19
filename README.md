@@ -50,7 +50,7 @@ Ensure you follow ComfyUI's code guidelines (nodes based on `NODE_CLASS_MAPPINGS
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE) (or choose another; create a `LICENSE` file if necessary).
+This project is not licensed
 
 ## Support and Contact
 
