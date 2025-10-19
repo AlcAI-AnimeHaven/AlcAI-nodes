@@ -29,7 +29,7 @@ AlcAI Nodes is a collection of custom nodes for **ComfyUI**, a modular interface
 
 ## Usage
 
-For advanced examples, import JSON workflow files from the `examples/` folder (create it if necessary).
+For advanced examples, import JSON workflow files from the `workflows/` folder.
 
 **Tip:** Use models like Anything V5 or anime LoRAs for better results.
 
