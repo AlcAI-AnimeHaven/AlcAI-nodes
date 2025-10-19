@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 
-// Fetches image URLs from Booru via proxy, handling errors
+// Fetches image URLs from Booru via proxy, handling errors and timeouts
 async function fetchBooruImageUrls(tags, page, website) {
     const trimmedTags = tags.trim();
     if (!trimmedTags) return { status: "info", values: ["Enter tags to search"] };
@@ -34,7 +34,7 @@ async function fetchBooruImageUrls(tags, page, website) {
     }
 }
 
-// Registers BooruImageLoader extension with ComfyUI
+// Registers the extension for BooruImageLoader node
 app.registerExtension({
     name: "Alcatraz.BooruImageLoader.Client",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -42,34 +42,77 @@ app.registerExtension({
 
         nodeType.prototype.onNodeCreated = function () {
             const node = this;
-            console.log("Booru Loader: Configuring node widgets");
+            console.log("Booru Loader: Configuring widgets");
 
-            // Retrieve widgets
-            const widgets = {
+            // Retrieve core widgets (before replacement)
+            let widgets = {
                 website: node.widgets.find(w => w.name === "website"),
                 mode: node.widgets.find(w => w.name === "mode"),
                 tags: node.widgets.find(w => w.name === "tags"),
                 page: node.widgets.find(w => w.name === "page_number"),
-                url: node.widgets.find(w => w.name === "selected_image_url")
+                save_locally: node.widgets.find(w => w.name === "save_locally")
             };
 
             if (Object.values(widgets).some(w => !w)) {
-                console.error("Booru Loader: Missing required widgets");
+                console.error("Booru Loader: Missing core widgets");
                 return;
             }
 
-            // Configure URL dropdown
-            widgets.url.type = "combo";
-            let lastValidSelection = widgets.url.value || "Enter tags & page...";
-            widgets.url.options = { values: [lastValidSelection] };
-            let isUpdating = false; // Prevent recursive updates
+            // Replace STRING widget with COMBO for non-editable dropdown
+            let urlWidget;
+            const oldUrlWidget = node.widgets.find(w => w.name === "selected_image_url");
+            if (oldUrlWidget) {
+                const oldIndex = node.widgets.indexOf(oldUrlWidget);
+                node.removeWidget(oldUrlWidget);  // Remove original STRING to avoid conflicts
+                urlWidget = node.addWidget(
+                    "combo",  // Creates a true <select> dropdown
+                    "selected_image_url",
+                    "Select URL...",  // Default value
+                    "Selected Image URL",  // Label
+                    { values: [] }  // Initial empty options; populated dynamically
+                );
+                // Re-insert at original position for layout consistency
+                node.widgets.splice(oldIndex, 0, urlWidget);
+                console.log("Booru Loader: Replaced STRING with COMBO dropdown widget");
+            } else {
+                console.error("Booru Loader: Could not find selected_image_url widget to replace");
+                return;
+            }
 
-            // Updates dropdown options based on widget inputs
+            // Update widgets object with new combo
+            widgets.url = urlWidget;
+            let lastValidSelection = urlWidget.value || "Select URL...";
+            let isUpdating = false;
+
+            // Dynamic save_path widget management (unchanged, as it works)
+            let savePathWidget = null;
+            const toggleSavePath = (enabled) => {
+                const existingIndex = node.widgets.findIndex(w => w.name === "save_path");
+                if (enabled && existingIndex === -1) {
+                    // Add text widget for path input
+                    savePathWidget = node.addWidget("text", "save_path", "booru_downloads", "Save Path", { 
+                        multiline: false 
+                    });
+                    console.log("Booru Loader: Added save_path widget (node will expand)");
+                } else if (!enabled && existingIndex !== -1) {
+                    // Set empty value before removal to avoid serialization issues
+                    if (savePathWidget) savePathWidget.value = "";
+                    node.widgets.splice(existingIndex, 1);
+                    savePathWidget = null;
+                    console.log("Booru Loader: Removed save_path widget (node will shrink)");
+                }
+                node.setDirtyCanvas(true, true);  // Force node resize/refresh
+            };
+
+            // Initialize based on default save_locally
+            toggleSavePath(widgets.save_locally.value);
+
+            // Populate dropdown with fetched options (list of 'url|tags')
             const updateDropdown = async () => {
-                if (isUpdating) return; // Prevent recursive calls
+                if (isUpdating) return;
                 isUpdating = true;
 
-                const { website, mode, tags, page, url } = widgets;
+                const { mode, url } = widgets;
                 if (mode.value === "random") {
                     url.options.values = ["Random mode: URL not applicable"];
                     url.value = url.options.values[0];
@@ -81,55 +124,78 @@ app.registerExtension({
 
                 url.disabled = false;
                 url.options.values = ["Loading URLs..."];
-                url.value = url.options.values[0];
+                url.value = "Loading URLs...";
                 node.setDirtyCanvas(true, true);
 
+                const { website, tags, page } = widgets;
                 const result = await fetchBooruImageUrls(tags.value, page.value, website.value);
                 const newOptions = result.status === "success" && result.values.length
                     ? result.values.map(item => `${item.url}|${item.tags}`)
-                    : result.values;
-                const newValue = newOptions.includes(lastValidSelection) ? lastValidSelection : newOptions[0] || "Error: Unknown error";
+                    : [result.values[0] || "No results found"];  // Fallback to single error/placeholder
 
-                url.options.values = newOptions;
+                // Preserve last valid if possible, else first option
+                const newValue = newOptions.includes(lastValidSelection) 
+                    ? lastValidSelection 
+                    : newOptions[0];
+
+                url.options.values = newOptions;  // Update dropdown options
                 url.value = newValue;
                 lastValidSelection = newValue;
                 node.setDirtyCanvas(true, true);
-                console.log(`Booru Loader: ${result.status === "success" ? `Loaded ${newOptions.length} URLs` : result.values[0]}`);
+                console.log(`Booru Loader: Dropdown updated with ${newOptions.length} options (${result.status})`);
                 isUpdating = false;
             };
 
-            // Debounced update trigger
+            // Debounced trigger for changes (e.g., tags/page/website)
             let debounceTimeout;
             const triggerUpdate = () => {
                 clearTimeout(debounceTimeout);
                 debounceTimeout = setTimeout(updateDropdown, 500);
             };
 
-            // Attach callbacks to widgets
-            widgets.url.callback = value => {
-                if (!value.match(/^(Loading|Enter tags|Error|No results|Random mode)/)) lastValidSelection = value;
+            // URL callback: Update on selection change (non-editable, so only triggers on select)
+            widgets.url.callback = (value) => {
+                if (!value.match(/^(Loading|Select|Error|No results|Random mode)/i)) {
+                    lastValidSelection = value;
+                    console.log(`Booru Loader: Selected URL: ${value.substring(0, 50)}...`);
+                }
                 node.setDirtyCanvas(true, true);
             };
 
+            // Callbacks for other widgets
             Object.entries(widgets).forEach(([key, widget]) => {
                 if (key === "url") return;
-                const originalCallback = widget.callback;
-                widget.callback = value => {
+                const original = widget.callback;
+                widget.callback = (value) => {
                     if (key === "page") {
-                        value = Number.isInteger(value) && value >= 0 ? value : (setTimeout(() => widget.value = 0, 0), 0);
+                        value = Math.max(0, parseInt(value) || 0);
+                        widget.value = value;
                     }
-                    if (originalCallback) originalCallback.call(widget, value);
-                    triggerUpdate();
+                    if (key === "save_locally") {
+                        toggleSavePath(value);
+                        // Don't trigger dropdown update on save toggle
+                        return;
+                    }
+                    if (original) original.call(widget, value);
+                    triggerUpdate();  // Refresh dropdown on relevant changes
                 };
             });
 
-            console.log("Booru Loader: Initializing dropdown");
-            updateDropdown();
+            // Initial population if tags have default value
+            if (widgets.tags.value.trim()) {
+                setTimeout(triggerUpdate, 100);  // Slight delay for node stability
+            }
+
+            console.log("Booru Loader: Initialization complete. Enter tags to populate dropdown.");
         };
 
-        // Clean up on node removal, avoiding recursive calls
+        // Cleanup dynamic widget on node removal
         const originalOnRemoved = nodeType.prototype.onRemoved;
         nodeType.prototype.onRemoved = function () {
+            const saveIndex = this.widgets?.findIndex(w => w.name === "save_path");
+            if (saveIndex !== -1) {
+                this.widgets.splice(saveIndex, 1);
+            }
             if (originalOnRemoved) originalOnRemoved.apply(this, arguments);
         };
     }
