@@ -1,31 +1,63 @@
-# --- START OF FILE __init__.py ---
-import importlib # Import the importlib module
-import traceback # Import traceback for more detailed error information
-import os # Import os to check for nodes/__init__.py
+"""
+AlcAI Custom Nodes Package
+=========================
 
-# Get the directory of the current __init__.py file
-package_dir = os.path.dirname(__file__)
-nodes_dir = os.path.join(package_dir, "nodes")
-nodes_init_file = os.path.join(nodes_dir, "__init__.py")
+This package dynamically loads and registers custom nodes for AlcAI workflows, 
+optimized for anime generation and AI pipelines (e.g., integration with ComfyUI).
 
-# Check if nodes directory exists and has __init__.py
+Key Components:
+- NODE_CLASS_MAPPINGS: Maps node class names to their classes.
+- NODE_DISPLAY_NAME_MAPPINGS: Maps node class names to user-friendly display names.
+- WEB_DIRECTORY: Path for web extensions (e.g., UI assets).
+
+The loading process checks for the 'nodes' directory, attempts to import each node module,
+and reports success/failure counts. Failed loads are logged with specific error details.
+
+Author: AlcAI-AnimeHaven
+Version: 1.0.0
+
+Usage:
+    # In ComfyUI or similar: Import this module to auto-register nodes
+    from alcai_nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+
+For adding nodes: Append to the `nodes_to_load` list in the format (class_name, module_subpath, display_name).
+Ensure each node module is in the 'nodes' subdirectory with proper __init__.py.
+"""
+
+__version__ = "1.0.0"
+__author__ = "AlcAI-AnimeHaven"
+
+import importlib  # For dynamic module imports
+import traceback  # For detailed error tracebacks in exceptions
+import os  # For directory and file path operations
+
+# Determine package paths
+package_dir = os.path.dirname(__file__)  # Root directory of this package
+nodes_dir = os.path.join(package_dir, "nodes")  # Subdirectory for node modules
+nodes_init_file = os.path.join(nodes_dir, "__init__.py")  # Required init file for relative imports
+
+# Validate nodes directory structure
 if not os.path.isdir(nodes_dir):
-    print(f"⚠️   Warning: 'nodes' directory not found in {package_dir}. Cannot load nodes.")
-    nodes_to_load = [] # Skip loading if directory doesn't exist
+    print(f"⚠️   Warning: 'nodes' directory not found in {package_dir}. Skipping node loads.")
+    nodes_to_load = []  # No nodes to attempt loading
 elif not os.path.isfile(nodes_init_file):
-    print(f"⚠️   Warning: Missing __init__.py in '{nodes_dir}'. Relative imports might fail.")
-    print(f"      Please create an empty file named __init__.py inside the 'nodes' directory.")
-    # Depending on Python version/environment, imports might still fail later.
-    # You could choose to set nodes_to_load = [] here too if you want to be strict.
+    print(f"⚠️   Warning: Missing __init__.py in '{nodes_dir}'. Relative imports may fail.")
+    print(f"      Tip: Create an empty __init__.py file in the 'nodes' directory.")
+    # Proceed with loads, but imports may still error later
 
-# Initialize empty dictionaries and counter
-NODE_CLASS_MAPPINGS = {}
-NODE_DISPLAY_NAME_MAPPINGS = {}
+# Global mappings for ComfyUI-style node registration
+NODE_CLASS_MAPPINGS = {}  # {class_name: node_class}
+NODE_DISPLAY_NAME_MAPPINGS = {}  # {class_name: display_name}
+
+# Counters for load summary
 loaded_nodes_count = 0
 attempted_nodes_count = 0
 
-# List of node information: (class_name, module_subpath, display_name)
-# module_subpath is relative to the 'nodes' directory
+# Node registry: (class_name, relative_module_path, display_name)
+# - class_name: The class to extract from the module.
+# - relative_module_path: Dot-separated path from 'nodes' (e.g., '.subfolder.Module').
+# - display_name: Human-readable name for UI display.
+# Add new nodes here; ensure the module exports the class and handles dependencies.
 nodes_to_load = [
     ("AnimeCharacterSelector", ".nodes.AnimeCharacterSelector", "Anime Character Selector (API)"),
     ("BooruImageLoader", ".nodes.BooruImageLoader", "Load Image from Booru"),
@@ -41,55 +73,51 @@ nodes_to_load = [
     ("CustomWatermarkMaker", ".nodes.WatermarkNode", "Custom Watermark Writer"),
     ("LoraNameSelector", ".nodes.LoraNameSelector", "Lora Name Selector"),
     ("LoraLoaderAndKeywords", ".nodes.CustomLoraLoader", "Load Lora with Keywords"),
-    # Add more nodes here in the same format if needed
+    # Extend this list for additional nodes
 ]
 
 print("\n   --- Loading AlcAI Custom Nodes ---   \n")
 
-# Iterate through the list and try to import/map each node
+# Dynamically load and register each node
 for class_name, import_path, display_name in nodes_to_load:
     attempted_nodes_count += 1
     try:
-        # Use importlib for dynamic relative import
-        # The 'package=__package__' argument is crucial for relative imports
-        # It tells import_module *relative to which package* it should resolve the dot '.'
+        # Perform relative import using the current package context
+        # This resolves '.nodes.SubModule' relative to the package root
         module = importlib.import_module(import_path, package=__package__)
-
-        # Get the class from the imported module
+        
+        # Extract the node class from the module
         node_class = getattr(module, class_name)
-
-        # Add to mappings if successful
+        
+        # Register in global mappings
         NODE_CLASS_MAPPINGS[class_name] = node_class
         NODE_DISPLAY_NAME_MAPPINGS[class_name] = display_name
-
-        # Increment the counter for successfully loaded nodes
+        
         loaded_nodes_count += 1
-        if loaded_nodes_count == 0 or loaded_nodes_count == 1:
-            print("\n")
-        print(f"  ✅     Node loaded: {class_name}")
-
+        print(f"  ✅     {class_name}: Loaded ({display_name})")
+        
     except ImportError as e:
-        print(f"  ❌     ImportError: Failed to import {class_name} from '{import_path}'. Check file/path existence, dependencies, and presence of 'nodes/__init__.py'. Error: {e}")
-        # print(f"      (Looking relative to package: {__package__})") # Uncomment for debugging package context
+        print(f"  ❌     Import failed for {class_name} ({import_path}): {e}")
+        print(f"         Check: File exists? Dependencies installed? 'nodes/__init__.py' present?")
     except AttributeError as e:
-         print(f"  ❌     AttributeError: Failed to find class '{class_name}' within module '{import_path}'. Check class name spelling in the Python file and in this list. Error: {e}")
+        print(f"  ❌     Class '{class_name}' not found in {import_path}: {e}")
+        print(f"         Check: Class name matches in module? Exported correctly?")
     except Exception as e:
-        print(f"  ❌     Unexpected Error loading {class_name}: {str(e)}")
-        # Optionally print full traceback for debugging
-        traceback.print_exc()
+        print(f"  ❌     Unexpected error loading {class_name}: {e}")
+        traceback.print_exc()  # Full traceback for debugging
 
+# Web extensions directory (relative to package root)
 WEB_DIRECTORY = "./web/extensions"
 
-# Export them so ComfyUI can discover them
+# Export public APIs for external discovery (e.g., by ComfyUI)
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']
 
 print("\n-----------------------------------------------------------------------------")
-# Use the counter in the final print message
 if attempted_nodes_count > 0:
-    print(f"  ✅   AlcAI NODES: {loaded_nodes_count} / {attempted_nodes_count} Custom Node(s) Loaded!")
-    if loaded_nodes_count < attempted_nodes_count:
-         print(f"  ⚠️   Note: {attempted_nodes_count - loaded_nodes_count} node(s) failed to load. See errors above.")
+    print(f"  ✅   AlcAI Nodes: {loaded_nodes_count}/{attempted_nodes_count} loaded successfully!")
+    failed_count = attempted_nodes_count - loaded_nodes_count
+    if failed_count > 0:
+        print(f"  ⚠️   {failed_count} node(s) failed. Review errors above for details.")
 else:
-    print("  ❌   AlcAI NODES: No nodes were attempted to load (check 'nodes' directory and __init__.py).")
+    print("  ❌   No nodes attempted: Verify 'nodes' directory and __init__.py.")
 print("-----------------------------------------------------------------------------\n")
-# --- END OF FILE __init__.py ---
