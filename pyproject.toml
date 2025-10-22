@@ -1,0 +1,36 @@
+[project]
+name = "alcai-nodes"
+description = "AlcAI Nodes is a collection of custom nodes for ComfyUI, a modular interface for image generation with Stable Diffusion. This project focuses on tools optimized for creating anime-style images and stylized effects, inspired by the AnimeHaven universe. It aims to simplify workflows for artists and AI creativity enthusiasts."
+version = "1.0.0"
+license = {file = "LICENSE"} 
+# classifiers = [
+#     # For OS-independent nodes (works on all operating systems)
+#     "Operating System :: OS Independent",
+#
+#     # OR for OS-specific nodes, specify the supported systems:
+#     "Operating System :: Microsoft :: Windows",  # Windows specific
+#     "Operating System :: POSIX :: Linux",  # Linux specific
+#     "Operating System :: MacOS",  # macOS specific
+#
+#     # GPU Accelerator support. Pick the ones that are supported by your extension.
+#     "Environment :: GPU :: NVIDIA CUDA",    # NVIDIA CUDA support
+#     "Environment :: GPU :: AMD ROCm",       # AMD ROCm support
+#     "Environment :: GPU :: Intel Arc",      # Intel Arc support
+#     "Environment :: NPU :: Huawei Ascend",  # Huawei Ascend support
+#     "Environment :: GPU :: Apple Metal",    # Apple Metal support
+# ]
+
+
+[project.urls]
+Repository = "https://github.com/AlcAI-AnimeHaven/AlcAI-nodes"
+#  Used by Comfy Registry https://registry.comfy.org
+Documentation = "https://github.com/AlcAI-AnimeHaven/AlcAI-nodes/wiki"
+"Bug Tracker" = "https://github.com/AlcAI-AnimeHaven/AlcAI-nodes/issues"
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "AlcAI-nodes"
+Icon = ""
+includes = [] 
+# "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
+
